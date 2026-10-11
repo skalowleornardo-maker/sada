@@ -36,7 +36,7 @@ CHEAT_BOTS = {
 }
 
 # ─────────────────────────────────────────────
-#  Invisible character cleaner
+#  Invisible character cleaner & String Parser
 # ─────────────────────────────────────────────
 INVISIBLE_CHARS = re.compile(
     r'[\u200b\u200c\u200d\u2060\u2061\u2062\u2063\u2064'
@@ -48,10 +48,18 @@ def clean_text(text: str) -> str:
     cleaned = "".join(ch for ch in cleaned if unicodedata.category(ch) not in ('Cc', 'Cf'))
     return cleaned
 
-def clean_character_name(text: str) -> str:
-    cleaned = clean_text(text)
-    cleaned = cleaned.replace('`', '').replace('"', '').replace("'", '').strip()
-    return re.sub(r'\s+', ' ', cleaned).lower()
+def extract_catch_target(raw_text: str) -> str | None:
+    # پیدا کردن بخش بعد از دستور catch
+    match = re.search(r'[/.]catch(?:@[a-zA-Z0-9_]+)?\s+([^\n\r]+)', raw_text, re.IGNORECASE)
+    if not match:
+        return None
+
+    target = match.group(1).strip()
+    # حذف اطلاعات اضافی پس از ایموجی‌ها، توضیحات یا پرانتز
+    target = re.split(r'[⚡▲★✨⚜️]|name\s*:|\(.*?\)', target, flags=re.IGNORECASE)[0]
+    target = clean_text(target).replace('`', '').replace('"', '').replace("'", '').strip()
+    target = re.sub(r'\s+', ' ', target)
+    return target.lower() if target else None
 
 # ─────────────────────────────────────────────
 #  Spawn trigger phrases
@@ -204,7 +212,7 @@ def build_main_menu():
 def build_cheat_bot_menu():
     data = load_db()
     current = data.get("selected_cheat_bot", "zs")
-    text = "⠀⠀⠀⠀🤖 Select Cheat Bot⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nانتخاب کن پیام‌های اسپاون به کدوم چیت‌بات ارسال بشن:"
+    text = "⠀⠀⠀⠀🤖 Select Cheat Bot⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nانتخاب ربات فعال جهت پردازش کاراکترها:"
     keyboard = [
         [Button.inline(f"{'✅' if current == 'zs' else '⚪'} @zswaifu_cheat_bot", data=b"set_bot_zs", style="success" if current == "zs" else "primary")],
         [Button.inline(f"{'✅' if current == 'sik' else '⚪'} @Sik_waifu_bot", data=b"set_bot_sik", style="success" if current == "sik" else "primary")],
@@ -215,7 +223,7 @@ def build_cheat_bot_menu():
 def build_catch_mode_menu():
     data = load_db()
     current = data.get("catch_mode", "dot")
-    text = "⠀⠀⠀⠀🎮 Select Catch Command Style⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nفرمت دستوری که به گروه ارسال میشه رو انتخاب کن:"
+    text = "⠀⠀⠀⠀🎮 Select Catch Command Style⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nفرمت ارسال دستور به گروه:"
     keyboard = [
         [Button.inline(f"{'✅' if current == 'full' else '⚪'} /catch@Character_Catcher_Bot name", data=b"set_mode_full", style="success" if current == "full" else "primary")],
         [Button.inline(f"{'✅' if current == 'slash' else '⚪'} /catch name", data=b"set_mode_slash", style="success" if current == "slash" else "primary")],
@@ -319,7 +327,6 @@ async def callback_handler(event):
             save_db(data)
             return await event.edit(text, buttons=kb, link_preview=False)
 
-        # انتخاب بات چیت
         elif cb == "menu_cheat_bot":
             text, kb = build_cheat_bot_menu()
             return await event.edit(text, buttons=kb, link_preview=False)
@@ -334,7 +341,6 @@ async def callback_handler(event):
             text, kb = build_cheat_bot_menu()
             return await event.edit(text, buttons=kb, link_preview=False)
 
-        # انتخاب استایل دستور
         elif cb == "menu_catch_mode":
             text, kb = build_catch_mode_menu()
             return await event.edit(text, buttons=kb, link_preview=False)
@@ -541,14 +547,12 @@ async def cheat_bot_reply(event):
         latest_spawn_chat_id = None
         return
 
-    # استخراج نام کاراکتر از هر دو فرمت خروجی
-    match = re.search(r'(?:▲:\s*)?/catch(?:@[a-zA-Z0-9_]+)?\s+([^\n\r]+)', raw)
-    if not match:
+    # استخراج نام خالص کاراکتر
+    char_name = extract_catch_target(raw)
+    if not char_name:
         return
 
-    char_name = clean_character_name(match.group(1))
-
-    # قالب‌بندی طبق حالت انتخاب‌شده در پنل
+    # فرمت‌دهی دستور طبق حالت انتخابی در پنل
     mode = data.get("catch_mode", "dot")
     if mode == "full":
         catch_cmd = f"/catch@Character_Catcher_Bot {char_name}"

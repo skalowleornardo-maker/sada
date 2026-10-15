@@ -28,12 +28,8 @@ API_HASH        = '820261ca851804a5c11b91cad4afc12f'
 BOT_TOKEN       = '8870533936:AAFdjf7PNrhY1bu4Cd-dSeaStyIGk04B1pc'
 HELPER_USERNAME = '@Tkdara_bot'
 
+CHEAT_BOT       = 'CCT_MARKETPLACE_BOT'
 CATCHER_BOT_ID  = 6157455819
-
-CHEAT_BOTS = {
-    "zs": "zswaifu_cheat_bot",
-    "sik": "Sik_waifu_bot",
-}
 
 # ─────────────────────────────────────────────
 #  Invisible character cleaner & String Parser
@@ -48,25 +44,21 @@ def clean_text(text: str) -> str:
     cleaned = "".join(ch for ch in cleaned if unicodedata.category(ch) not in ('Cc', 'Cf'))
     return cleaned
 
-def extract_catch_target(raw_text: str) -> str | None:
-    # 1. گرفتن متن بعد از /catch یا .catch تا قبل از کاراکترهای خراب‌کننده
-    # این پترن از تکرار دستور مثل ▼: /catch یا توضیحات ⚡ جلوگیری میکنه
-    match = re.search(r'[/.]catch(?:@[a-zA-Z0-9_]+)?\s+([a-zA-Z0-9_\-\s]+?)(?=\s*[▲▼⚡★✨⚜️\(]|\s*[/.]catch|$)', raw_text, re.IGNORECASE)
-    
-    if not match:
-        # حالت رزرو اگر فرمت کاراکترها خاص بود
-        fallback = re.search(r'[/.]catch(?:@[a-zA-Z0-9_]+)?\s+([^\n\r▲▼⚡]+)', raw_text, re.IGNORECASE)
-        if not fallback:
-            return None
-        target = fallback.group(1).strip()
-    else:
-        target = match.group(1).strip()
+def extract_first_catch_command(raw_text: str) -> str | None:
+    # پیدا کردن همه دستورهایی که با /catch شروع می‌شوند
+    matches = re.findall(r'(/catch\s+[^\n\r]+)', raw_text, re.IGNORECASE)
+    if not matches:
+        return None
 
-    # 2. فیلتر کردن توضیحات ثانویه، پرانتزها و کاراکترهای نامرئی
-    target = re.split(r'[▲▼⚡★✨⚜️]|name\s*:|\(.*?\)', target, flags=re.IGNORECASE)[0]
-    target = clean_text(target).replace('`', '').replace('"', '').replace("'", '').strip()
-    target = re.sub(r'\s+', ' ', target)
-    return target.lower() if target else None
+    # انتخاب دقیقاً اولین دستور پیشنهادی
+    first_cmd = matches[0].strip()
+    
+    # حذف بک‌تیک یا کاراکترهای نامرئی
+    first_cmd = clean_text(first_cmd).replace('`', '').replace('"', '').replace("'", '').strip()
+    
+    # استانداردسازی فاصله‌ها
+    first_cmd = re.sub(r'\s+', ' ', first_cmd)
+    return first_cmd
 
 # ─────────────────────────────────────────────
 #  Spawn trigger phrases
@@ -96,8 +88,6 @@ DEFAULT_DB = {
     "fake_online": False,
     "total_catches": 0,
     "antispam_count": 0,
-    "selected_cheat_bot": "zs",
-    "catch_mode": "dot",
     "rarity_catcher": {
         "🔵": True, "🟣": True, "🟠": True, "🟡": True,
         "💮": True, "⚜️": True, "⚡": True, "🪞": True, "✨": True, "❓": True
@@ -171,20 +161,11 @@ def build_main_menu():
     antispam_emoji = "Active" if data["anti_spam"] else "Off"
     groups_list    = "\n".join(f"  • {lnk}" for lnk in data["groups"].values()) or "  (none)"
 
-    active_bot_name = "ZS Cheat" if data.get("selected_cheat_bot") == "zs" else "Sik Waifu"
-    modes_display = {
-        "full": "/catch@Character_Catcher_Bot",
-        "slash": "/catch",
-        "dot": ".catch"
-    }
-    active_mode_str = modes_display.get(data.get("catch_mode", "dot"), ".catch")
-
     text = (
-        "⠀⠀⠀⠀🌸 AutoCatch 🌸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\n"
+        "⠀⠀⠀⠀🌸 AutoCatch Panel 🌸⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\n"
         f"❖ Status        ›  {status_emoji}\n"
         f"❖ Anti-Spam    ›  {antispam_emoji}\n"
-        f"❖ Cheat Bot    ›  {active_bot_name}\n"
-        f"❖ Catch Mode   ›  {active_mode_str}\n"
+        f"❖ Cheat Bot    ›  @{CHEAT_BOT}\n"
         f"❖ Auto React   ›  {'Active' if data['auto_react'] else 'Off'}\n"
         f"❖ Fake Online  ›  {'Active' if data['fake_online'] else 'Off'}\n"
         f"❖ Delay         ›  {data['delay']}s\n\n"
@@ -200,10 +181,6 @@ def build_main_menu():
     keyboard = [
         [Button.inline(f"{'✅' if data['is_active'] else '❌'} AutoCatch: {'Active' if data['is_active'] else 'Off'}", data=b"toggle", style=toggle_style)],
         [Button.inline(f"{'✅' if data['anti_spam'] else '❌'} Anti-Spam: {'Active' if data['anti_spam'] else 'Off'}", data=b"toggle_antispam", style=spam_style)],
-        [
-            Button.inline(f"🤖 Bot: {active_bot_name}", data=b"menu_cheat_bot", style="primary"),
-            Button.inline(f"🎮 Mode: {active_mode_str}", data=b"menu_catch_mode", style="primary"),
-        ],
         [Button.inline(f"{'✅' if data['auto_react'] else '❌'} Auto React: {'Active' if data['auto_react'] else 'Off'}", data=b"toggle_react", style=react_style)],
         [Button.inline(f"{'✅' if data['fake_online'] else '❌'} Fake Type & Online: {'Active' if data['fake_online'] else 'Off'}", data=b"toggle_online", style=online_style)],
         [Button.inline("⚙️ Rarity Settings", data=b"rarity_catcher", style="primary")],
@@ -213,29 +190,6 @@ def build_main_menu():
             Button.inline("➕ Add Group", data=b"add_group", style="primary"),
             Button.inline("➖ Remove Group", data=b"remove_group", style="primary"),
         ],
-    ]
-    return text, keyboard
-
-def build_cheat_bot_menu():
-    data = load_db()
-    current = data.get("selected_cheat_bot", "zs")
-    text = "⠀⠀⠀⠀🤖 Select Cheat Bot⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nانتخاب ربات فعال جهت ارسال مشخصات کاراکتر:"
-    keyboard = [
-        [Button.inline(f"{'✅' if current == 'zs' else '⚪'} @zswaifu_cheat_bot", data=b"set_bot_zs", style="success" if current == "zs" else "primary")],
-        [Button.inline(f"{'✅' if current == 'sik' else '⚪'} @Sik_waifu_bot", data=b"set_bot_sik", style="success" if current == "sik" else "primary")],
-        [Button.inline("⬅️ Back", data=b"back_to_main", style="danger")]
-    ]
-    return text, keyboard
-
-def build_catch_mode_menu():
-    data = load_db()
-    current = data.get("catch_mode", "dot")
-    text = "⠀⠀⠀⠀🎮 Select Catch Command Style⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀\n\nنحوه ارسال دستور کچ در سوپرگروه‌ها:"
-    keyboard = [
-        [Button.inline(f"{'✅' if current == 'full' else '⚪'} /catch@Character_Catcher_Bot name", data=b"set_mode_full", style="success" if current == "full" else "primary")],
-        [Button.inline(f"{'✅' if current == 'slash' else '⚪'} /catch name", data=b"set_mode_slash", style="success" if current == "slash" else "primary")],
-        [Button.inline(f"{'✅' if current == 'dot' else '⚪'} .catch name", data=b"set_mode_dot", style="success" if current == "dot" else "primary")],
-        [Button.inline("⬅️ Back", data=b"back_to_main", style="danger")]
     ]
     return text, keyboard
 
@@ -332,41 +286,6 @@ async def callback_handler(event):
         elif cb == "show_stats":
             text, kb = build_stats_menu()
             save_db(data)
-            return await event.edit(text, buttons=kb, link_preview=False)
-
-        # انتخاب بات چیت
-        elif cb == "menu_cheat_bot":
-            text, kb = build_cheat_bot_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-        elif cb == "set_bot_zs":
-            data["selected_cheat_bot"] = "zs"
-            save_db(data)
-            text, kb = build_cheat_bot_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-        elif cb == "set_bot_sik":
-            data["selected_cheat_bot"] = "sik"
-            save_db(data)
-            text, kb = build_cheat_bot_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-
-        # انتخاب حالت ارسال دستور
-        elif cb == "menu_catch_mode":
-            text, kb = build_catch_mode_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-        elif cb == "set_mode_full":
-            data["catch_mode"] = "full"
-            save_db(data)
-            text, kb = build_catch_mode_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-        elif cb == "set_mode_slash":
-            data["catch_mode"] = "slash"
-            save_db(data)
-            text, kb = build_catch_mode_menu()
-            return await event.edit(text, buttons=kb, link_preview=False)
-        elif cb == "set_mode_dot":
-            data["catch_mode"] = "dot"
-            save_db(data)
-            text, kb = build_catch_mode_menu()
             return await event.edit(text, buttons=kb, link_preview=False)
 
         elif cb == "rarity_catcher":
@@ -513,18 +432,15 @@ async def spawn_detector(event):
                 print(f"[SPAWN] ⛔ Rarity {found_emoji} is disabled, skipping")
                 return
 
-            bot_key = data.get("selected_cheat_bot", "zs")
-            target_cheat_bot = CHEAT_BOTS.get(bot_key, "zswaifu_cheat_bot")
-
-            print(f"[SPAWN] ✅ Detected! Forwarding to @{target_cheat_bot}")
+            print(f"[SPAWN] ✅ Detected! Forwarding to @{CHEAT_BOT}")
             latest_spawn_chat_id = event.chat_id
 
             if data["delay"] > 0:
                 await asyncio.sleep(data["delay"])
 
             try:
-                await user_client.forward_messages(target_cheat_bot, event.message)
-                print(f"[SPAWN] ✅ Successfully forwarded to @{target_cheat_bot}")
+                await user_client.forward_messages(CHEAT_BOT, event.message)
+                print(f"[SPAWN] ✅ Successfully forwarded to @{CHEAT_BOT}")
             except Exception as e:
                 print(f"[SPAWN] ❌ Forward failed: {e}")
             return
@@ -539,40 +455,28 @@ async def cheat_bot_reply(event):
     if not latest_spawn_chat_id or not event.raw_text:
         return
 
-    data = load_db()
-    current_key = data.get("selected_cheat_bot", "zs")
-    expected_bot = CHEAT_BOTS.get(current_key, "zswaifu_cheat_bot").lower()
-
     chat = await event.get_chat()
     username = getattr(chat, 'username', '') or ''
-    if username.lower() != expected_bot:
+    if username.lower() != CHEAT_BOT.lower():
         return
 
     raw = clean_text(event.raw_text)
 
-    # رد کردن پیام‌های خطا یا نشناختن کاراکتر
-    if any(kw in raw for kw in ("❌", "Not Found", "Processing", "recognize", "I don't recognize")):
-        print(f"[CHEAT] ⚠️ Character not recognized by @{username}. Skipping.")
+    # رد کردن در صورت عدم شناسایی در دیتابیس
+    if any(kw in raw for kw in ("ᴛʜɪs ᴅʀᴏᴘ ɪs ɴᴏᴛ ɪɴ ᴍʏ ʀᴇᴄᴏʀᴅs", "not in my records", "❔")):
+        print(f"[CHEAT] ⚠️ Drop not in records (@{CHEAT_BOT}). Skipping.")
         latest_spawn_chat_id = None
         return
 
-    # استخراج خالص نام کاراکتر بدون خرابکاری رجکس
-    char_name = extract_catch_target(raw)
-    if not char_name:
+    # استخراج اولین دستور /catch
+    catch_cmd = extract_first_catch_command(raw)
+    if not catch_cmd:
         return
-
-    # قالب‌بندی طبق حالت انتخاب‌شده در پنل
-    mode = data.get("catch_mode", "dot")
-    if mode == "full":
-        catch_cmd = f"/catch@Character_Catcher_Bot {char_name}"
-    elif mode == "slash":
-        catch_cmd = f"/catch {char_name}"
-    else:  # "dot"
-        catch_cmd = f".catch {char_name}"
 
     target_chat = latest_spawn_chat_id
     latest_spawn_chat_id = None
 
+    data = load_db()
     data["total_catches"] = data.get("total_catches", 0) + 1
     save_db(data)
     print(f"[CATCH] Sending: {catch_cmd} → chat {target_chat}")

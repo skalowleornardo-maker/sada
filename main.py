@@ -45,20 +45,23 @@ def clean_text(text: str) -> str:
     return cleaned
 
 def extract_first_catch_command(raw_text: str) -> str | None:
-    # پیدا کردن همه دستورهایی که با /catch شروع می‌شوند
-    matches = re.findall(r'(/catch\s+[^\n\r]+)', raw_text, re.IGNORECASE)
-    if not matches:
+    # گرفتن نام کاراکتر بعد از اولین /catch تا قبل از کاراکترهایی مثل • یا - یا دستور بعدی یا Tap
+    match = re.search(
+        r'/catch\s+([a-zA-Z0-9_\s]+?)(?=\s*[•\-\n\r]|/catch|Tap\s+a\s+line|$)', 
+        raw_text, 
+        re.IGNORECASE
+    )
+    if not match:
         return None
 
-    # انتخاب دقیقاً اولین دستور پیشنهادی
-    first_cmd = matches[0].strip()
+    name = match.group(1).strip()
+    name = clean_text(name).replace('`', '').replace('"', '').replace("'", '').strip()
+    name = re.sub(r'\s+', ' ', name)
     
-    # حذف بک‌تیک یا کاراکترهای نامرئی
-    first_cmd = clean_text(first_cmd).replace('`', '').replace('"', '').replace("'", '').strip()
-    
-    # استانداردسازی فاصله‌ها
-    first_cmd = re.sub(r'\s+', ' ', first_cmd)
-    return first_cmd
+    if not name:
+        return None
+
+    return f"/catch {name}"
 
 # ─────────────────────────────────────────────
 #  Spawn trigger phrases
@@ -462,13 +465,13 @@ async def cheat_bot_reply(event):
 
     raw = clean_text(event.raw_text)
 
-    # رد کردن در صورت عدم شناسایی در دیتابیس
-    if any(kw in raw for kw in ("ᴛʜɪs ᴅʀᴏᴘ ɪs ɴᴏᴛ ɪɴ ᴍʏ ʀᴇᴄᴏʀᴅs", "not in my records", "❔")):
+    # رد کردن در صورت عدم شناسایی کاراکتر
+    if any(kw in raw for kw in ("ᴛʜɪs ᴅʀᴏᴘ ɪs ɴᴏᴛ ɪɴ ᴍʏ ʀᴇᴄᴏʀᴅs", "not in my records", "❔", "❌")):
         print(f"[CHEAT] ⚠️ Drop not in records (@{CHEAT_BOT}). Skipping.")
         latest_spawn_chat_id = None
         return
 
-    # استخراج اولین دستور /catch
+    # استخراج اولین دستور /catch بدون اضافات
     catch_cmd = extract_first_catch_command(raw)
     if not catch_cmd:
         return
